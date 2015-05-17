@@ -5,11 +5,11 @@ var io = require('socket.io')(http);
 
 var users = [];
 
-app.use(express.static('../client/stream-of-redditness-app/www/'));
+app.use(express.static('../client/stream-of-redditness-ionic/www/'));
 
 
 app.get('/', function (req, res){
-  res.sendFile('../client/stream-of-redditness-app/www/index.html');
+  res.sendFile('../client/stream-of-redditness-ionic/www/index.html');
 });
 
 io.on('connection', function (socket) {
