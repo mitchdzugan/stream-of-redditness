@@ -10,11 +10,11 @@ auth = "Basic " + new Buffer(fs.readFileSync("auth")).toString("base64");
 
 var authorizing = {};
 
-app.use(express.static('../client/stream-of-redditness-ionic/www/'));
+app.use(express.static('../client/stream-of-redditness-cordova/www/'));
 
 
 app.get('/', function (req, res){
-  res.sendFile('../client/stream-of-redditness-ionic/www/index.html');
+  res.sendFile('../client/stream-of-redditness-cordova/www/index.html');
 });
 
 app.get("/auth", function (req, res) {
