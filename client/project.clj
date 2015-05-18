@@ -8,14 +8,15 @@
                  [org.clojure/clojurescript "0.0-3211"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [sablono "0.3.4"]
-                 [org.omcljs/om "0.8.8"]]
+                 [org.omcljs/om "0.8.8"]
+                 [secretary "1.2.3"]]
 
   :plugins [[lein-cljsbuild "1.0.5"]
             [lein-figwheel "0.3.1"]]
 
   :source-paths ["src"]
 
-  :clean-targets ^{:protect false} ["stream-of-redditness-cordova/www/js/compiled" "target"]
+  :clean-targets ^{:protect false} ["stream-of-redditness-ionic/www/js/compiled" "target"]
   
   :cljsbuild {
     :builds [{:id "dev"
@@ -25,12 +26,12 @@
 
               :compiler {:main stream-of-redditness-cljs.core
                          :asset-path "js/compiled/out"
-                         :output-to "stream-of-redditness-cordova/www/js/compiled/stream_of_redditness_cljs.js"
-                         :output-dir "stream-of-redditness-cordova/www/js/compiled/out"
+                         :output-to "stream-of-redditness-ionic/www/js/compiled/stream_of_redditness_cljs.js"
+                         :output-dir "stream-of-redditness-ionic/www/js/compiled/out"
                          :source-map-timestamp true }}
              {:id "min"
               :source-paths ["src"]
-              :compiler {:output-to "stream-of-redditness-cordova/www/js/compiled/stream_of_redditness_cljs.js"
+              :compiler {:output-to "stream-of-redditness-ionic/www/js/compiled/stream_of_redditness_cljs.js"
                          :main stream-of-redditness-cljs.core                         
                          :optimizations :advanced
                          :pretty-print false}}]}
@@ -38,7 +39,7 @@
   :figwheel {
              ;; :http-server-root "public" ;; default and assumes "resources" 
              ;; :server-port 3449 ;; default
-             :css-dirs ["stream-of-redditness-cordova/www/css"] ;; watch and update CSS
+             :css-dirs ["stream-of-redditness-ionic/www/css"] ;; watch and update CSS
 
              ;; Start an nREPL server into the running figwheel process
              ;; :nrepl-port 7888

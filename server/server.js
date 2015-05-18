@@ -10,15 +10,16 @@ auth = "Basic " + new Buffer(fs.readFileSync("auth")).toString("base64");
 
 var authorizing = {};
 
-app.use(express.static('../client/stream-of-redditness-cordova/www/'));
+app.use(express.static('../client/stream-of-redditness-ionic/www/'));
 
 
 app.get('/', function (req, res){
-  res.sendFile('../client/stream-of-redditness-cordova/www/index.html');
+  res.sendFile('../client/stream-of-redditness-ionic/www/index.html');
 });
 
 app.get("/auth", function (req, res) {
   if (Object.keys(authorizing).indexOf(req.query.state) != -1) {
+  	var socket = authorizing[req.query.state].socket;
   	request.post({
 		url: 'https://www.reddit.com/api/v1/access_token',
 		headers: {
@@ -30,8 +31,26 @@ app.get("/auth", function (req, res) {
 			redirect_uri: 'http://localhost:3000/auth'
 		}
 	}, function(err, httpResponse, body) {
-			console.log(httpResponse);
-			console.log(body);
+			var j = JSON.parse(body);
+			var authData = {
+				access_token: j["access_token"],
+				token_type: j["token_type"],
+				expires_in: j["expires_in"],
+				refresh_token: j["refresh_token"]
+			};
+			bearAuth = "bearer " + j["access_token"];
+			request.get({
+				url: 'https://oauth.reddit.com/api/v1/me',
+				headers: {
+					"Authorization" : bearAuth,
+					"User-Agent" : "StreamOfRedditness"
+				}
+			}, function(err, httpResponse, body) {
+				var j = JSON.parse(body);
+				var mappedAuthData = {};
+				mappedAuthData[j["name"]] = authData
+				socket.emit("authData", mappedAuthData);
+			});
 		}
 	);
   }
