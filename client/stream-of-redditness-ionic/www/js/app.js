@@ -5,7 +5,6 @@
 // the 2nd parameter is an array of 'requires'
 // 'starter.services' is found in services.js
 // 'starter.controllers' is found in controllers.js
-
 angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
 
 .run(function($ionicPlatform) {
@@ -35,9 +34,11 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
     url: "/app",
     abstract: true,
     templateUrl: "templates/app.html",
-    controller: function($scope) {
+    controller: function($scope, $state, $ionicPopover, $ionicPopup) {
+      stream_of_redditness_cljs.core.registerPopupShower(
+        function (popupDetails) {return $ionicPopup.show(popupDetails)}
+        );
       stream_of_redditness_cljs.core.authButton();
-      console.log("In app Controller");
     }
   })
 
@@ -46,8 +47,7 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
     views: {
       'home': {
         templateUrl: 'templates/home.html',
-        controller: function($scope) {
-          console.log("In home Controller");
+        controller: function($scope, $ionicPopup) {
         }
       }
     }

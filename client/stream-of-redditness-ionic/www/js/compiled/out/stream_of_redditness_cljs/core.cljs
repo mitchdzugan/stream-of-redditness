@@ -12,11 +12,23 @@
                       {:awaitingReqUrl false
                        :reqUrl ""
                        :intervalId 0
-                       :requestSent true}}))
+                       :requestSent true}
+                      :popups
+                      {:popupShower (fn [p] nil)
+                       :activePopup nil
+                       :lastClickNotInPopup true}
+                      :reddit
+                      {:activeThreads []}}))
+
+(defn set-html! [el content]
+  (aset el "innerHTML" content))
 
 (defn deep-merge [a b]
   (merge-with (fn [x y]
-                (if (map? x) (deep-merge x y) y)) a b))
+                (cond (map? y) (deep-merge x y) 
+                      (vector? y) (concat x y) 
+                      :else y)) 
+                 a b))
 
 (defn readAppStateWithZipper [zip]
   (reduce #(get %1 %2) @app-state zip))
@@ -45,12 +57,33 @@
 (defn readLocalStorageWithZipper [zip] 
   (reduce #(get %1 (name %2)) (readLocalStorage) zip))
 (defn writeLocalStorage [hashmap]
+  (println (deep-merge (readLocalStorage) (js->clj (clj->js hashmap))))
   (.setItem localStorage storageString 
-            (->> (deep-merge (readLocalStorage) hashmap)
+            (->> (deep-merge (readLocalStorage) (js->clj (clj->js hashmap)))
                  clj->js
                  (.stringify js/JSON))))
 (defn writeLocalStorageWithZipper [zip hashmap]
   (writeLocalStorage (reduce #(hash-map %2 %1) hashmap (reverse zip))))
+
+(.addEventListener js/document "click" 
+                   (fn [] 
+                     (if (and 
+                           (readAppStateWithZipper [:popups :lastClickNotInPopup])
+                           (readAppStateWithZipper [:popups :activePopup]))
+                       (.close (readAppStateWithZipper [:popups :activePopup])))
+                     (writeAppStateWithZipper [:popups :lastClickNotInPopup] true)))
+
+(defn ^:export registerPopupShower [popupShower]
+  (writeAppStateWithZipper [:popups :popupShower] popupShower))
+
+(defn ^:export showPopup [popupDetails]
+  (let [popup ((readAppStateWithZipper [:popups :popupShower]) popupDetails)]
+    (-> js/document
+        (.getElementsByClassName "popup") 
+        (.item 0)
+        (.addEventListener "click" (fn [] (writeAppStateWithZipper [:popups :lastClickNotInPopup] false))))
+    (writeAppStateWithZipper [:popups :activePopup] popup)
+    (.then popup (fn [res] (writeAppStateWithZipper [:popups :activePopup] nil)))))
 
 (def socket (js/io "http://localhost:3000"))
 (.on socket "authVal" 
@@ -87,21 +120,56 @@
                  (writeAppStateWithZipper [:oauthReq] {:requestSent true}))))
            1000)}))))
 
+(defn switchActiveUser [username]
+  (writeLocalStorageWithZipper [:active-user] username)
+  (.close (readAppStateWithZipper [:popups :activePopup])))
+
+(defn onAuthSwitchClick [event] 
+  (showPopup (clj->js 
+               {:template 
+                (str "<div class=\"list\">"
+                     (reduce str (map 
+                                   (fn [username]
+                                     (str "<label class=\"item item-radio\">
+                                             <input type=\"radio\" name=\"group\" 
+                                                    onClick=\"stream_of_redditness_cljs
+                                                                  .core
+                                                                  .switchActiveUser('" username "')\""
+                                           (if (= username (readLocalStorageWithZipper [:active-user]))
+                                                  " checked=\"checked\">" ">")
+                                               "<div class=\"item-content\">" username "</div>
+                                             <i class=\"radio-icon ion-checkmark\"></i>
+                                           </label>")) 
+                                   (keys (readLocalStorageWithZipper [:users]))))
+                     "</div>")
+                :title "Select an account to use"
+                :buttons [{:text "Add new account"
+                           :onTap onAuthNewClick}]})))
+
+;;(defn authSwitcherButtonStyle [] (.-style (.getElementById js/document "AuthSwitcherButton")))
+
 (defn ^:export authButton []
   (om/root
     (fn [data owner]
       (let [storedAuths (readLocalStorageWithZipper [:users])]
         (if (< 0 (count storedAuths))
-            (reify om/IRender
-              (render [_]
-                      (dom/span nil "Currently logged in as: " 
-                                (dom/button #js {:class "button"} 
+            (do 
+              ;;(set! (.-display (authSwitcherButtonStyle)) "inline")
+              ;;(set-html! (.getElementById js/document "AuthSwitcherButton") (readLocalStorageWithZipper 
+              ;;                                     [:active-user]))
+              (reify om/IRender 
+                (render [_]
+                      (dom/span nil "Currently in as: " 
+                                (dom/button #js {:className "button" :onClick onAuthSwitchClick} 
                                             (readLocalStorageWithZipper 
-                                              [:active-user])))))
-            (reify om/IRender 
+                                             [:active-user]))
+                            ))))
+            (do 
+              ;;(set! (.-display (authSwitcherButtonStyle)) "none")
+              (reify om/IRender 
             (render [_] 
-                    (dom/button #js {:class "button" :onClick onAuthNewClick}
-                                "Authorize Account"))))))
+                    (dom/button #js {:className "button" :onClick onAuthNewClick}
+                                "Authorize An Account")))))))
     app-state {:target (. js/document (getElementById "AuthButton"))}))
 
 
