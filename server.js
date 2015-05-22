@@ -6,7 +6,7 @@ var server = http.Server(app);
 var io = require('socket.io')(server);
 var fs = require('fs');
 
-auth = "Basic " + new Buffer(fs.readFileSync("auth")).toString("base64");
+auth = "Basic " + new Buffer(process.env.REDDITAPPSECRET).toString("base64");
 
 var authorizing = {};
 
