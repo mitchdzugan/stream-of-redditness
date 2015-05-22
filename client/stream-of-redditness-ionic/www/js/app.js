@@ -34,24 +34,29 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
     url: "/app",
     abstract: true,
     templateUrl: "templates/app.html",
-    controller: function($scope, $state, $ionicPopover, $ionicPopup) {
+    controller: function($scope, $ionicPopup) {
       stream_of_redditness_cljs.core.registerPopupShower(
         function (popupDetails) {return $ionicPopup.show(popupDetails)}
         );
-      stream_of_redditness_cljs.core.authButton();
+      stream_of_redditness_cljs.core.authButtonView();
     }
   })
 
   .state('app.home', {
     url: '/home',
-    views: {
-      'home': {
-        templateUrl: 'templates/home.html',
-        controller: function($scope, $ionicPopup) {
-        }
-      }
+    templateUrl: 'templates/home.html',
+    controller: function($scope) {
     }
-  });
+  })
+
+  .state('app.stream', {
+    url: '/stream?threads',
+    templateUrl: 'templates/stream.html',
+    controller: function($scope, $state) {
+      stream_of_redditness_cljs.core.streamView($state.params.threads);
+    }
+  })
+
   // if none of the above states are matched, use this as the fallback
   $urlRouterProvider.otherwise('/app/home');
 

@@ -1,9 +1,28 @@
 (ns ^:figwheel-always stream-of-redditness-cljs.core
     (:require [om.core :as om :include-macros true]
-              [om.dom :as dom :include-macros true]))
+              [om.dom :as dom :include-macros true]
+              [ajax.core :refer [GET POST]]
+              [clojure.string :as string])
+    (:require-macros [cljs.core.async.macros :refer [go]]))
 
 (enable-console-print!)
 (println "Edits to this text should show up in your developer console.")
+
+(defn printReturn [a]
+  (println a)
+  a)
+
+(def binary [0 1])
+(def allPoss (for [a binary
+                   b binary
+                   c binary
+                   d binary
+                   e binary
+                   f binary]
+               [a b c d e f]))
+
+(defn partition2 [f l]
+  [(filter f l) (filter #(not (f %)) l)])
 
 ;; define your app data so that it doesn't get over-written on reload
 (defonce app-state (atom
@@ -18,28 +37,49 @@
                        :activePopup nil
                        :lastClickNotInPopup true}
                       :reddit
-                      {:activeThreads []}}))
+                      {:activeThreads {}
+                       :requestQueue []}}))
 
 (defn set-html! [el content]
   (aset el "innerHTML" content))
 
-(defn deep-merge [a b]
+(defn deep-merge-root [f a b]
   (merge-with (fn [x y]
-                (cond (map? y) (deep-merge x y) 
-                      (vector? y) (concat x y) 
+                (cond (map? y) (deep-merge-root f x y) 
+                      (seq? x) (f x y)
                       :else y)) 
                  a b))
 
-(defn readAppStateWithZipper [zip]
+(defn merge-vectors [k x y]
+  (map #(deep-merge-root (partial merge-vectors k) (reduce (fn [el v] (if (= (k el) (k %)) el %)) x) %) y))
+
+(defn deep-merge 
+  ([a b] (deep-merge-root concat a b))
+  ([a b f] (deep-merge-root f a b)))
+
+(defn zipReadState [zip]
   (reduce #(get %1 %2) @app-state zip))
 
-(defn writeAppState [hashmap]
-    (swap! app-state (fn [state] (deep-merge state hashmap))))
-(defn writeAppStateWithZipper [zip hashmap]
-  (writeAppState (reduce #(hash-map %2 %1) hashmap (reverse zip))))
+(defn writeState [f hashmap]
+    (swap! app-state (fn [state] (deep-merge state hashmap f))))
+(defn zipWriteState 
+  ([zip hashmap] 
+   (writeState concat (reduce #(hash-map %2 %1) hashmap (reverse zip))))
+  ([zip hashmap k]
+   (writeState (partial merge-vectors k) (reduce #(hash-map %2 %1) hashmap (reverse zip)))))
+(defn zipOverwriteState [zip hashmap]
+  (swap! app-state 
+         (fn [state] 
+           (->>
+             zip
+             (reduce #(conj %1 (%2 (peek %1))) (list state))
+             pop
+             (map vector (->> zip reverse))
+             (reduce (fn [newBranch [k oldBranch]] 
+                       (assoc oldBranch k newBranch)) hashmap)))))
 (defn refreshView []
-  (writeAppStateWithZipper [:tripwire] 
-                           (not (readAppStateWithZipper [:tripwire]))))
+  (zipWriteState [:tripwire] 
+                           (not (zipReadState [:tripwire]))))
 
 (defn parseObjForce [jsonString]
   (let [parsed (try 
@@ -51,78 +91,77 @@
 
 (def localStorage (.-localStorage js/window))
 (def storageString "StreamOfRedditnessStorage")
-(defn readLocalStorage [] (-> localStorage 
+(defn readStorage [] (-> localStorage 
                               (.getItem storageString) 
                               parseObjForce))
-(defn readLocalStorageWithZipper [zip] 
-  (reduce #(get %1 (name %2)) (readLocalStorage) zip))
-(defn writeLocalStorage [hashmap]
-  (println (deep-merge (readLocalStorage) (js->clj (clj->js hashmap))))
+(defn zipReadStorage [zip] 
+  (reduce #(get %1 (name %2)) (readStorage) zip))
+(defn writeStorage [hashmap]
   (.setItem localStorage storageString 
-            (->> (deep-merge (readLocalStorage) (js->clj (clj->js hashmap)))
+            (->> (deep-merge (readStorage) (js->clj (clj->js hashmap)))
                  clj->js
                  (.stringify js/JSON))))
-(defn writeLocalStorageWithZipper [zip hashmap]
-  (writeLocalStorage (reduce #(hash-map %2 %1) hashmap (reverse zip))))
+(defn zipWriteStorage [zip hashmap]
+  (writeStorage (reduce #(hash-map %2 %1) hashmap (reverse zip))))
 
 (.addEventListener js/document "click" 
                    (fn [] 
                      (if (and 
-                           (readAppStateWithZipper [:popups :lastClickNotInPopup])
-                           (readAppStateWithZipper [:popups :activePopup]))
-                       (.close (readAppStateWithZipper [:popups :activePopup])))
-                     (writeAppStateWithZipper [:popups :lastClickNotInPopup] true)))
+                           (zipReadState [:popups :lastClickNotInPopup])
+                           (zipReadState [:popups :activePopup]))
+                       (.close (zipReadState [:popups :activePopup])))
+                     (zipWriteState [:popups :lastClickNotInPopup] true)))
 
 (defn ^:export registerPopupShower [popupShower]
-  (writeAppStateWithZipper [:popups :popupShower] popupShower))
+  (zipWriteState [:popups :popupShower] popupShower))
 
 (defn ^:export showPopup [popupDetails]
-  (let [popup ((readAppStateWithZipper [:popups :popupShower]) popupDetails)]
+  (let [popup ((zipReadState [:popups :popupShower]) popupDetails)]
     (-> js/document
         (.getElementsByClassName "popup") 
         (.item 0)
-        (.addEventListener "click" (fn [] (writeAppStateWithZipper [:popups :lastClickNotInPopup] false))))
-    (writeAppStateWithZipper [:popups :activePopup] popup)
-    (.then popup (fn [res] (writeAppStateWithZipper [:popups :activePopup] nil)))))
+        (.addEventListener "click" (fn [] (zipWriteState [:popups :lastClickNotInPopup] false))))
+    (zipWriteState [:popups :activePopup] popup)
+    (.then popup (fn [res] (zipWriteState [:popups :activePopup] nil)))))
 
 (def socket (js/io "http://localhost:3000"))
 (.on socket "authVal" 
-     (fn [msg] (if (readAppStateWithZipper 
+     (fn [msg] (if (zipReadState 
                      [:oauthReq :awaitingReqUrl])
-                 (writeAppStateWithZipper 
+                 (zipWriteState 
                    [:oauthReq] 
                    {:reqUrl msg :awaitingReqUrl false}))))
 (.on socket "authData"
      (fn [msg]
        (let [msg (js->clj msg)]
-         (writeLocalStorageWithZipper [:users] msg)
-         (writeLocalStorageWithZipper [:active-user] (first (first msg)))
+         (zipWriteStorage [:users] msg)
+         (zipWriteStorage [:active-user] (first (first msg)))
          (refreshView))))
 
 (defn onAuthNewClick [event]
-  (if (readAppStateWithZipper [:oauthReq :requestSent]) 
+  (if (zipReadState [:oauthReq :requestSent]) 
     (do
-      (writeAppStateWithZipper [:oauthReq] {:awaitingReqUrl true 
+      (zipWriteState [:oauthReq] {:awaitingReqUrl true 
                                             :requestSent false})
       (.emit socket "requestAuth")
-      (writeAppStateWithZipper 
+      (zipWriteState 
         [:oauthReq]
         {:intervalId 
          (.setInterval 
            js/window 
            (fn [] 
-             (if-not (readAppStateWithZipper [:oauthReq :awaitingReqUrl]) 
+             (if-not (zipReadState [:oauthReq :awaitingReqUrl]) 
                (do
-                 (.clearInterval js/window (readAppStateWithZipper 
+                 (.clearInterval js/window (zipReadState 
                                              [:oauthReq :intervalId]))
-                 (.open js/window (readAppStateWithZipper 
-                                             [:oauthReq :reqUrl]) "_system")
-                 (writeAppStateWithZipper [:oauthReq] {:requestSent true}))))
+                 (.open js/window (zipReadState 
+                                    [:oauthReq :reqUrl]) "_system")
+                 (zipWriteState [:oauthReq] {:requestSent true}))))
            1000)}))))
 
 (defn switchActiveUser [username]
-  (writeLocalStorageWithZipper [:active-user] username)
-  (.close (readAppStateWithZipper [:popups :activePopup])))
+  (zipWriteStorage [:active-user] username)
+  (.close (zipReadState [:popups :activePopup])))
 
 (defn onAuthSwitchClick [event] 
   (showPopup (clj->js 
@@ -135,43 +174,267 @@
                                                     onClick=\"stream_of_redditness_cljs
                                                                   .core
                                                                   .switchActiveUser('" username "')\""
-                                           (if (= username (readLocalStorageWithZipper [:active-user]))
+                                           (if (= username (zipReadStorage [:active-user]))
                                                   " checked=\"checked\">" ">")
                                                "<div class=\"item-content\">" username "</div>
                                              <i class=\"radio-icon ion-checkmark\"></i>
                                            </label>")) 
-                                   (keys (readLocalStorageWithZipper [:users]))))
+                                   (keys (zipReadStorage [:users]))))
                      "</div>")
                 :title "Select an account to use"
                 :buttons [{:text "Add new account"
                            :onTap onAuthNewClick}]})))
 
-;;(defn authSwitcherButtonStyle [] (.-style (.getElementById js/document "AuthSwitcherButton")))
-
-(defn ^:export authButton []
+(defn ^:export authButtonView []
   (om/root
     (fn [data owner]
-      (let [storedAuths (readLocalStorageWithZipper [:users])]
+      (let [storedAuths (zipReadStorage [:users])]
         (if (< 0 (count storedAuths))
-            (do 
-              ;;(set! (.-display (authSwitcherButtonStyle)) "inline")
-              ;;(set-html! (.getElementById js/document "AuthSwitcherButton") (readLocalStorageWithZipper 
-              ;;                                     [:active-user]))
-              (reify om/IRender 
-                (render [_]
-                      (dom/span nil "Currently in as: " 
-                                (dom/button #js {:className "button" :onClick onAuthSwitchClick} 
-                                            (readLocalStorageWithZipper 
-                                             [:active-user]))
-                            ))))
-            (do 
-              ;;(set! (.-display (authSwitcherButtonStyle)) "none")
-              (reify om/IRender 
-            (render [_] 
-                    (dom/button #js {:className "button" :onClick onAuthNewClick}
-                                "Authorize An Account")))))))
+          (om/component
+            (dom/h3 nil "Logged in as: " 
+                    (dom/button #js {:className "button" :onClick onAuthSwitchClick} 
+                                (dom/a nil (zipReadStorage
+                                             [:active-user])))))
+          (om/component
+            (dom/button #js {:className "button" :onClick onAuthNewClick}
+                        "Authorize An Account")))))
     app-state {:target (. js/document (getElementById "AuthButton"))}))
 
+(defn renderBaseComment [baseComment]
+  (dom/div #js {:className "item"} 
+           (:content baseComment)
+           (apply dom/div #js {:className "list"} 
+                  (map renderBaseComment 
+                       (reverse 
+                         (sort-by :time (vals (:comments baseComment))))))))
+
+(defn renderBaseComment1 [baseComment]
+  (dom/div (clj->js {:className "item" :style {:padding "0px" :backgroundColor (:color baseComment)}})
+           (dom/div (clj->js {:className "item" :style {:marginLeft "10px"}})
+                    (:content baseComment)
+                    (apply dom/div #js {:className "list"} 
+                           (map renderBaseComment 
+                                (reverse 
+                                  (sort-by :time (vals (:comments baseComment)))))))))
+
+(defn renderThreads [threads]
+  (->> threads
+       vals
+       (map (fn [thread] (reduce
+                           (fn [t k]
+                             (assoc-in t [:comments k :color] (:color thread)))
+                           thread 
+                           (keys (:comments thread)))))
+       (reduce deep-merge)
+       ;;(reduce #(loop [l1 %1 l2 %2 lmerged []]
+       ;;           (let [l1head (first l1) l1rest (rest l1)
+       ;;                 l2head (first l2) l2rest (rest l2)]
+       ;;             (if (or l1head l2head)
+       ;;               (if (and l1head 
+       ;;                        (or (not l2head)
+       ;;                            (> (:time l1head) (:time l2head))))
+       ;;                 (recur l1rest 
+       ;;                        (conj l2rest l2head) 
+       ;;                        (conj lmerged l1head))
+       ;;                 (recur (conj l1rest l1head) 
+       ;;                        l2rest 
+       ;;                        (conj lmerged l2head)))
+       ;;               lmerged))))
+       :comments
+       vals
+       (sort-by :time)
+       reverse
+       (map renderBaseComment1)))
+
+(defn moreCommentsJSONHandler [threadIds response]
+  (doall (->> 
+    (get response "jquery")
+    (filter (fn [jqueryArray]
+              (-> jqueryArray 
+                  (nth 3) 
+                  first
+                  first
+                  (get "data"))))
+    (map (fn [jqueryArray]
+           (-> 
+             jqueryArray
+             (nth 3)
+             first
+             (#(map (fn [isoCommentData]
+                      (-> isoCommentData
+                          (get "data"))) %))
+             (#(reduce 
+                 (fn [[moreComments paths] commentData]
+                   (let [parentId 
+                         (-> commentData
+                             (get "parent_id")
+                             ((fn [pid] (drop 3 pid)))
+                             ((fn [pid] (string/join "" pid)))
+                             keyword)
+                         commentId 
+                         (-> commentData
+                             (get "id")
+                             keyword)
+                         body 
+                         (-> commentData
+                             (get "body"))
+                         t
+                         (-> commentData
+                             (get "created"))]
+                     [(deep-merge 
+                        moreComments
+                        (reduce (fn [commentTree pathEl]
+                                  {pathEl commentTree}) {commentId 
+                                                         {:id commentId 
+                                                          :content body
+                                                          :comments {}
+                                                          :time t}} (reverse (parentId paths)))) 
+                      (assoc paths commentId 
+                        (concat (parentId paths) 
+                                [commentId :comments]))])) 
+                 [{} {(first (rest (reverse threadIds))) threadIds}] %))
+             first)))
+    (reduce deep-merge {})
+    (zipWriteState [:reddit :activeThreads]))))
+
+(defn processCommentTree [pathTo commentTree]
+  (->>
+    commentTree
+    (#(get % "data"))
+    (#(get % "children"))
+    (partition2 #(= "t1" (get % "kind")))
+    ((fn [[t1 more]]
+       (->>
+         more
+         (map 
+           (fn [moreData]
+             {:time (.now js/Date)
+              :threadId (first pathTo)
+              :requestFun (fn []
+                            (GET 
+                              (str "https://api.reddit.com/api/morechildren?link_id=t3_"
+                                   (name (first pathTo))
+                                   "&children="
+                                   (-> moreData
+                                       (get "data")
+                                       (get "children")
+                                       (#(string/join "," %)))
+                                   "&sort=new")
+                                 {:handler (partial moreCommentsJSONHandler pathTo)}))
+              :type :more}))
+         (zipWriteState [:reddit :requestQueue])
+         )
+       t1))
+    (map (fn [c] [(-> c (get "data") (get "id") keyword) 
+                  {:comments (processCommentTree (concat
+                                                   pathTo
+                                                   [(keyword (-> c 
+                                                        (get "data") 
+                                                        (get "id"))) :comments]) 
+                                                 (-> c
+                                                     (get "data")
+                                                     (get "replies")))
+                   :content (-> c (get "data") (get "body"))
+                   :time (-> c (get "data") (get "created"))
+                   :id (-> c (get "data") (get "id"))}]))
+    (into {})))
+
+(defn newCommentsJSONHandler [threadId response]
+  (if (zipReadState [:reddit :activeThreads threadId]) 
+    (->> 
+      (js->clj response)
+      (#(nth % 1))
+      (processCommentTree [threadId :comments])
+      ((fn [comments] {:comments comments}))
+      (zipWriteState [:reddit :activeThreads threadId]))))
+
+(defn pollReddit []
+  (println "Still doin this shit")
+  (let [incedWaitTimes (->> 
+                         (zipReadState [:reddit :activeThreads])
+                         (map (fn [[k v]] [k (assoc v 
+                                               :waitTime 
+                                               (+ 1 (:waitTime v)))]))
+                         (into {}))
+        targetId (->> incedWaitTimes
+                      (apply max-key (fn [[k v]] (:waitTime v)))
+                      first)]
+    (->> {targetId {:waitTime 0}}
+         (#(deep-merge incedWaitTimes %))
+         (zipWriteState [:reddit :activeThreads]))
+    (GET (str "https://api.reddit.com/comments/" 
+              (name targetId) ".json?sort=new")
+         {:handler (partial newCommentsJSONHandler [targetId] processCommentTree)})))
+
+(defn newCommentsPoller [threadId]
+  (GET (str "https://api.reddit.com/comments/"
+            (name threadId) ".json?sort=new")
+       {:handler (partial newCommentsJSONHandler threadId)})
+  (.setTimeout js/window (fn [] (newCommentsPoller threadId)) 31500))
+
+(defn myFun []
+  (reduce (fn [df dc] (assoc df :a (:a dc))) {} [{:a 1} {:a 2}]))
+
+(defn ^:export streamView [threadsString]
+  (let [threads (->> (str "[" (->>
+                                (string/split threadsString #",")
+                                (map (fn [item] (str "\"" item "\"")))
+                                (string/join ",")) 
+                          "]")
+                     (.parse js/JSON)
+                     js->clj
+                     (map keyword))
+        activeThreads (zipReadState [:reddit :activeThreads])
+        stillActiveThreads (select-keys 
+                             activeThreads 
+                             (for [[k v] activeThreads when (some #{k} 
+                                                                  threads)] k))]
+    (->> threads
+         (map vector (reverse ["#ff0000" "#00ff00" "#0000ff" "#FFFF00" "#00FFFF" "#FF00FF"]))
+         (reduce #(assoc %1 (nth %2 1) {:waitTime 0 :requestQueue [] :comments {} 
+                                        :color (nth %2 0) :id (nth %2 1)}) {})
+         (deep-merge stillActiveThreads)
+         (#(do 
+             (zipWriteState [:reddit :activeThreads] %)
+             (->> %
+                  keys
+                  (map (fn [threadId] 
+                         {:time (.now js/Date)
+                          :threadId threadId
+                          :requestFun (fn [] (newCommentsPoller threadId))
+                          :type :new}))
+                  ((fn [requests]
+                     (zipWriteState 
+                       [:reddit :requestQueue] requests))))))))
+  (om/root
+    (fn [activeThreads owner]
+      (om/component (apply dom/div #js {:className "list"} 
+                           (renderThreads (:activeThreads (:reddit activeThreads))))))
+    ;;(:activeThreads (:reddit 
+                      app-state
+    ;;                  )) 
+    {:target (. js/document (getElementById "StreamContainer"))}))
+
+(defn makeNextRequest []
+  (->> 
+    (zipReadState [:reddit :requestQueue])
+    (filter #((:threadId %) (zipReadState [:reddit :activeThreads])))
+    (sort-by :time)
+    (partition2 #(= :new (:type %)))
+    ((fn [[news others]]
+       (->
+         (reduce
+           (fn [dict threadDict]
+             (assoc dict (:threadId threadDict) threadDict))
+           {} 
+           news)
+         vals
+         (concat others))))
+    ((fn [requests]
+       (if (first requests) ((:requestFun (first requests))))
+       (zipOverwriteState [:reddit :requestQueue] (rest requests))))))
+
+(.setInterval js/window makeNextRequest 8200)
 
 (defn on-js-reload []
   ;; optionally touch your app-state to force rerendering depending on

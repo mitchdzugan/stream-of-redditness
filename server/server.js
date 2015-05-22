@@ -17,7 +17,42 @@ app.get('/', function (req, res){
   res.sendFile('../client/stream-of-redditness-ionic/www/index.html');
 });
 
-app.get("/auth", function (req, res) {
+function getAuth(req, res) {
+  function postAccessTokenResponse(err, httpResponse, body) {
+	if (err) {
+		console.log("reddit fail post")
+		getAuth(req, res)
+	} else {
+		var j = JSON.parse(body);
+		var authData = {
+			access_token: j["access_token"],
+			token_type: j["token_type"],
+			expires_in: j["expires_in"],
+			refresh_token: j["refresh_token"]
+		};
+		bearAuth = "bearer " + j["access_token"];
+		request.get({
+			url: 'https://oauth.reddit.com/api/v1/me',
+			headers: {
+				"Authorization" : bearAuth,
+				"User-Agent" : "StreamOfRedditness"
+			}
+		}, function(err2, httpResponse2, body2) {
+			if (err2) {
+				console.log("reddit fail get me");
+				postAccessTokenResponse(err, httpResponse, body)
+			} else {
+				var j = JSON.parse(body2);
+				var mappedAuthData = {};
+				mappedAuthData[j["name"]] = authData
+				socket.emit("authData", mappedAuthData);
+				console.log("success");
+				console.log(mappedAuthData);
+				delete authorizing[req.query.state]
+			}
+		});
+	}
+  }
   if (Object.keys(authorizing).indexOf(req.query.state) != -1) {
   	var socket = authorizing[req.query.state].socket;
   	request.post({
@@ -30,36 +65,14 @@ app.get("/auth", function (req, res) {
 			code: req.query.code,
 			redirect_uri: 'http://localhost:3000/auth'
 		}
-	}, function(err, httpResponse, body) {
-			var j = JSON.parse(body);
-			var authData = {
-				access_token: j["access_token"],
-				token_type: j["token_type"],
-				expires_in: j["expires_in"],
-				refresh_token: j["refresh_token"]
-			};
-			bearAuth = "bearer " + j["access_token"];
-			request.get({
-				url: 'https://oauth.reddit.com/api/v1/me',
-				headers: {
-					"Authorization" : bearAuth,
-					"User-Agent" : "StreamOfRedditness"
-				}
-			}, function(err, httpResponse, body) {
-				var j = JSON.parse(body);
-				var mappedAuthData = {};
-				mappedAuthData[j["name"]] = authData
-				socket.emit("authData", mappedAuthData);
-			});
-		}
-	);
+	}, postAccessTokenResponse);
   }
   res.send("Hello");
-});
+}
+
+app.get("/auth", getAuth);
 
 io.on('connection', function (socket) {
-  console.log("A user Connected");
-
   socket.on('requestAuth', function (name) {
   	var authIdGen = function() {
   		var randomTextGen = function() {
@@ -85,7 +98,6 @@ io.on('connection', function (socket) {
   });
 
   socket.on('disconnect', function () {
-  console.log("A user Disconnected");
   });
 });
 
