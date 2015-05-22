@@ -434,7 +434,7 @@
        (if (first requests) ((:requestFun (first requests))))
        (zipOverwriteState [:reddit :requestQueue] (rest requests))))))
 
-(.setInterval js/window makeNextRequest 8200)
+(.setInterval js/window makeNextRequest 2200)
 
 (defn on-js-reload []
   ;; optionally touch your app-state to force rerendering depending on
