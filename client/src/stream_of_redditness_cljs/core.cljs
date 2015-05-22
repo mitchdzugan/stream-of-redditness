@@ -21,6 +21,7 @@
                    f binary]
                [a b c d e f]))
 
+
 (defn partition2 [f l]
   [(filter f l) (filter #(not (f %)) l)])
 
@@ -40,9 +41,6 @@
                       {:activeThreads {}
                        :requestQueue []}}))
 
-(defn set-html! [el content]
-  (aset el "innerHTML" content))
-
 (defn deep-merge-root [f a b]
   (merge-with (fn [x y]
                 (cond (map? y) (deep-merge-root f x y) 
@@ -56,6 +54,25 @@
 (defn deep-merge 
   ([a b] (deep-merge-root concat a b))
   ([a b f] (deep-merge-root f a b)))
+
+(defn playFun [d1 d2]
+  (->> d2
+       (map (fn [[k v]]
+              (cond (not (contains? d1 k)) {k v}
+                    (map? v) (let [nv (playFun (k d1) v)]
+                               (if (= {} nv) {} {k nv}))
+                    (seq? v) (if (= 0 (count v)) {} {k v})
+                    (= v (k d1)) {}
+                    :else {k v})))
+       (reduce deep-merge {})))
+
+(defn pf2 [d1 d2]
+  (->> (playFun d1 d2)
+       ((fn [a] [a (deep-merge d1 a)]))))
+
+(defn t1 []
+  (pf2 {:a {:b 3 :c 2 :d {:e 4}}}
+           {:a {:g 3 :c 2 :d {:e 1}}}))
 
 (defn zipReadState [zip]
   (reduce #(get %1 %2) @app-state zip))
