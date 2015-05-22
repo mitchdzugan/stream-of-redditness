@@ -1,0 +1,25 @@
+{
+  "name": "stream-of-redditness",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mitchdzugan/stream-of-redditness.git"
+  },
+  "author": "Mitchell Dzugan",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mitchdzugan/stream-of-redditness/issues"
+  },
+  "homepage": "https://github.com/mitchdzugan/stream-of-redditness",
+  "dependencies": {
+    "express": "^4.12.4",
+    "request": "^2.55.0",
+    "socket.io": "^1.3.5"
+  }
+}
