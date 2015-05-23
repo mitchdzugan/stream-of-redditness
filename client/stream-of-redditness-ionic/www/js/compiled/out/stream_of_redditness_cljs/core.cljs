@@ -169,7 +169,9 @@
          ;;       (if (not (= (.. event -connection -connectionId) (zipReadState [:opentokSessions (keyword threadId) :myId])))
          ;;         (println "AY BABY WAN SUM FUK"))
          ;;       (println "shut dafuq up")))
-         (.on session "signal" (fn [event] (zipWriteState [:reddit :activeThreads :threadId] (.-data event))))
+         (.on session "signal" (fn [event] 
+                                 (zipWriteState [:reddit :activeThreads :threadId] (.-data event))
+                                 (println "Merged from other client")))
          (.connect session opentokKey token)
          )))
 
