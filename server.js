@@ -63,7 +63,7 @@ function getAuth(req, res) {
   if (Object.keys(authorizing).indexOf(req.query.state) != -1) {
   	var socket = authorizing[req.query.state].socket;
   	request.post({
-		url: 'https://www.reddit.com/api/v1/access_token',
+		url: 'http://www.reddit.com/api/v1/access_token',
 		headers: {
 			"Authorization" : auth
 		},
