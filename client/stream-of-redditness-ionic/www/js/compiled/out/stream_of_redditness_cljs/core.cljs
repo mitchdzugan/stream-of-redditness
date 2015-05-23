@@ -39,7 +39,8 @@
                        :lastClickNotInPopup true}
                       :reddit
                       {:activeThreads {}
-                       :requestQueue []}}))
+                       :requestQueue []}
+                      :opentokSessions {}}))
 
 (defn deep-merge-root [f a b]
   (merge-with (fn [x y]
@@ -154,6 +155,23 @@
          (zipWriteStorage [:users] msg)
          (zipWriteStorage [:active-user] (first (first msg)))
          (refreshView))))
+(.on socket "threadSession"
+     (fn [msg]
+       (let [[threadId opentokKey sessionId token] (js->clj msg)
+             session (.initSession js/TB sessionId)]
+         (zipWriteState [:opentokSessions (keyword threadId) :session] session)
+         (.on session "sessionConnected"
+              (fn [_]
+                (zipWriteState [:opentokSessions (keyword threadId) :myId] 
+                               (.. session -connection -connectionId))))
+         ;;(.on session "connectionCreated" 
+         ;;     (fn [event]
+         ;;       (if (not (= (.. event -connection -connectionId) (zipReadState [:opentokSessions (keyword threadId) :myId])))
+         ;;         (println "AY BABY WAN SUM FUK"))
+         ;;       (println "shut dafuq up")))
+         (.on session "signal" (fn [event] (zipWriteState [:reddit :activeThreads :threadId] (.-data event))))
+         (.connect session opentokKey token)
+         )))
 
 (defn onAuthNewClick [event]
   (if (zipReadState [:oauthReq :requestSent]) 
@@ -363,7 +381,9 @@
       (#(nth % 1))
       (processCommentTree [threadId :comments])
       ((fn [comments] {:comments comments}))
-      (zipWriteState [:reddit :activeThreads threadId]))))
+      (zipWriteState [:reddit :activeThreads threadId])))
+  (.signal (zipReadState [:opentokSessions threadId :session]) 
+           (clj->js {:data (zipReadState [:reddit :activeThreads threadId])})))
 
 (defn pollReddit []
   (println "Still doin this shit")
@@ -423,6 +443,10 @@
                   ((fn [requests]
                      (zipWriteState 
                        [:reddit :requestQueue] requests))))))))
+  (doall (->> 
+           (zipReadState [:reddit :activeThreads])
+           keys
+           (map (fn [threadId] (.emit socket "joinThread" threadId)))))
   (om/root
     (fn [activeThreads owner]
       (om/component (apply dom/div #js {:className "list"} 

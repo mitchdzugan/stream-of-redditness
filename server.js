@@ -5,10 +5,17 @@ var request = require('request');
 var server = http.Server(app);
 var io = require('socket.io')(server);
 var fs = require('fs');
+var OpenTok = require('opentok');
 
-auth = "Basic " + new Buffer(process.env.REDDITAPPSECRET).toString("base64");
+var auth = "Basic " + new Buffer((process.env.REDDITAPPSECRET || fs.readFileSync("auth"))).toString("base64");
+var opentokKey = "45242672";
+
+var opentok = new OpenTok(
+	opentokKey, 
+	(process.env.OPENTOKAPPSECRET || String(fs.readFileSync("opentokSec"))));
 
 var authorizing = {};
+var activeThreads = {};
 
 app.use(express.static('./client/stream-of-redditness-ionic/www/'));
 
@@ -97,10 +104,27 @@ io.on('connection', function (socket) {
   	socket.emit("authVal", authUrl);
   });
 
+  socket.on('joinThread', function (msg) {
+  	var threadId = msg.name;
+  	console.log("THREAD JOIN REQUEST");
+  	console.log(threadId)
+  	if (Object.keys(activeThreads).indexOf(threadId) != -1) {
+  		token = opentok.generateToken(activeThreads[threadId]);
+  		socket.emit("threadSession", [threadId, opentokKey, activeThreads[threadId], token]);
+  	} else {
+  		opentok.createSession(function(err, session) {
+  			if (err) throw err;
+  			activeThreads[threadId] = session.sessionId;
+  			token = opentok.generateToken(session.sessionId);
+  			socket.emit("threadSession", [threadId, opentokKey, session.sessionId, token]);
+  		});
+  	}
+  })
+
   socket.on('disconnect', function () {
   });
 });
 
-server.listen(process.env.PORT || 3000, function(){
+server.listen(3000, function(){
   console.log('listening on *:3000');
 });
