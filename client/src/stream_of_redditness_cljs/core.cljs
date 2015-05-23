@@ -142,7 +142,7 @@
     (zipWriteState [:popups :activePopup] popup)
     (.then popup (fn [res] (zipWriteState [:popups :activePopup] nil)))))
 
-(def socket (js/io "http://localhost:3000"))
+(def socket (js/io "https://stream-of-redditness.herokuapp.com/"))
 (.on socket "authVal" 
      (fn [msg] (if (zipReadState 
                      [:oauthReq :awaitingReqUrl])
