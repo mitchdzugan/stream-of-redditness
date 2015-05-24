@@ -2,7 +2,8 @@
     (:require [om.core :as om :include-macros true]
               [om.dom :as dom :include-macros true]
               [ajax.core :refer [GET POST]]
-              [clojure.string :as string])
+              [clojure.string :as string]
+              [clojure.set :as set])
     (:require-macros [cljs.core.async.macros :refer [go]]))
 
 (enable-console-print!)
@@ -44,7 +45,8 @@
 
 (defn deep-merge-root [f a b]
   (merge-with (fn [x y]
-                (cond (map? y) (deep-merge-root f x y) 
+                (cond (map? y) (deep-merge-root f x y)
+                      (set? x) (f x y)
                       (seq? x) (f x y)
                       :else y)) 
                  a b))
@@ -75,6 +77,32 @@
   (pf2 {:a {:b 3 :c 2 :d {:e 4}}}
            {:a {:g 3 :c 2 :d {:e 1}}}))
 
+(defn dicSize [d]
+  (count (.stringify js/JSON (clj->js d))))
+
+(defn withLim 
+  ([d] (withLim d [] {} []))
+  ([d dsi cdi kli]
+   (reduce (fn [[ds cd kl] [k v]]
+             (cond (map? v) (let [[nds ncd _] (withLim v ds cd (conj kl k))]
+                              [nds ncd kl])
+                   (seq? v) ()
+                   :else (let [jvd (reduce #(hash-map %2 %1) {k v} (reverse kl))
+                               nd (deep-merge cd jvd)]
+                           (if (< 3000 (dicSize nd)) 
+                             [(conj ds cd) jvd kl]
+                             [ds nd kl])))) [dsi cdi kli] d)))
+
+(defn allKeysToKeywords [d]
+  (into {}
+        (map (fn [[k v]]
+               [(keyword k)
+                (cond (map? v) (allKeysToKeywords v)
+                      :else v)]) d)))
+
+(defn twl [] 
+  (withLim {:a 23 :b {:c 123 :d "asdaasdaasdaaaasdaasdaasdaasdaasdaasda" :j 213} :k "ay"}))
+
 (defn zipReadState [zip]
   (reduce #(get %1 %2) @app-state zip))
 
@@ -83,8 +111,8 @@
 (defn zipWriteState 
   ([zip hashmap] 
    (writeState concat (reduce #(hash-map %2 %1) hashmap (reverse zip))))
-  ([zip hashmap k]
-   (writeState (partial merge-vectors k) (reduce #(hash-map %2 %1) hashmap (reverse zip)))))
+  ([zip hashmap f]
+   (writeState f (reduce #(hash-map %2 %1) hashmap (reverse zip)))))
 (defn zipOverwriteState [zip hashmap]
   (swap! app-state 
          (fn [state] 
@@ -142,7 +170,55 @@
     (zipWriteState [:popups :activePopup] popup)
     (.then popup (fn [res] (zipWriteState [:popups :activePopup] nil)))))
 
-(def socket (js/io "https://stream-of-redditness.herokuapp.com/"))
+(defn strToNum [s]
+  (reduce + (map #(.charCodeAt % 0)) s))
+
+(defn introduce [session threadId client]
+  (println (str "Introducing: " (.-connectionId client)))
+  (let [[restMsgs lastMsg _] (withLim (zipReadState [:reddit 
+                                                     :activeThreads 
+                                                     threadId]))]
+    (println "Messages: ")
+    (println restMsgs)
+    (println lastMsg)
+    (doseq [msg (conj restMsgs lastMsg)]
+      (.signal session (clj->js {:type "introduction"
+                                 :to client
+                                 :data msg}))))
+  (.signal session (clj->js {:type "introduction-complete"
+                             :to client})))
+
+(defn introduceIfNecessary [session threadId]
+  (let [myId (zipReadState [:opentokSessions threadId :myId])
+        clients (zipReadState [:opentokSessions threadId :clients])
+        unintroduced-clients (zipReadState [:opentokSessions threadId 
+                                            :unintroduced-clients])
+        introduced-clients (sort-by
+                             strToNum
+                             (filter #(not (contains? unintroduced-clients %))
+                                     (keys clients)))]
+    ;;(println (str "Intro'd: " introduced-clients))
+    ;;(println (str "Not Intro'd: " unintroduced-clients))
+    (if-not (contains? unintroduced-clients myId)
+      (doseq [clientId unintroduced-clients]
+        (if (= myId (first (sort-by #(- (strToNum clientId) (strToNum %)) introduced-clients)))
+          (introduce session threadId (get clients clientId)))))))
+
+(defn ensureSomeoneIsIntroduced [session threadId]
+  (if (= (count (zipReadState [:opentokSessions threadId 
+                               :clients]))
+         (count (zipReadState [:opentokSessions threadId 
+                               :unintroduced-clients])))
+   (do
+     (zipWriteState [:opentokSessions threadId 
+                     :unintroduced-clients]
+                    #{(zipReadState [:opentokSessions threadId
+                                     :myId])}
+                    set/difference)
+     (.signal session (clj->js {:type "am-introduced"}))
+     (introduceIfNecessary session threadId))))
+
+(def socket (js/io "http://stream-of-redditness.herokuapp.com/"))
 (.on socket "authVal" 
      (fn [msg] (if (zipReadState 
                      [:oauthReq :awaitingReqUrl])
@@ -157,21 +233,95 @@
          (refreshView))))
 (.on socket "threadSession"
      (fn [msg]
-       (let [[threadId opentokKey sessionId token] (js->clj msg)
-             session (.initSession js/TB sessionId)]
-         (zipWriteState [:opentokSessions (keyword threadId) :session] session)
+       (let [[threadId-str opentokKey sessionId token] (js->clj msg)
+             session (.initSession js/TB sessionId)
+             threadId (keyword threadId-str)]
          (.on session "sessionConnected"
               (fn [_]
-                (zipWriteState [:opentokSessions (keyword threadId) :myId] 
-                               (.. session -connection -connectionId))))
-         ;;(.on session "connectionCreated" 
-         ;;     (fn [event]
-         ;;       (if (not (= (.. event -connection -connectionId) (zipReadState [:opentokSessions (keyword threadId) :myId])))
-         ;;         (println "AY BABY WAN SUM FUK"))
-         ;;       (println "shut dafuq up")))
-         (.on session "signal" (fn [event] 
-                                 (zipWriteState [:reddit :activeThreads :threadId] (.-data event))
-                                 (println "Merged from other client")))
+                (println (str "Session Connected: " (.. session -connection -connectionId)))
+                (zipOverwriteState [:opentokSessions threadId]
+                               {:session session
+                                :myId (.. session -connection -connectionId)
+                                :clients {}
+                                :unintroduced-clients #{}
+                                :should-be-introduced-clients #{}})))
+         (.on session "connectionCreated" 
+              (fn [event]
+                (let [client (.-connection event)
+                      clientId (.-connectionId client)
+                      myId (zipReadState [:opentokSessions threadId :myId])]
+                  (println (str "Connection Created: " clientId))
+                  (if (contains? (zipReadState
+                                   [:opentokSessions threadId :clients]) myId)
+                    (do
+                      (if (contains? (zipReadState
+                                       [:opentokSessions threadId 
+                                        :unintroduced-clients]) myId)
+                        (.signal session (clj->js {:type "am-not-introduced"})))
+                      (zipWriteState [:opentokSessions 
+                                      threadId 
+                                      :unintroduced-clients] 
+                                     #{clientId} set/union))
+                    (if (and (= clientId myId) (< 0 (count (zipReadState 
+                                                             [:opentokSessions 
+                                                              threadId 
+                                                              :clients]))))
+                      (zipWriteState [:opentokSessions 
+                                      threadId 
+                                      :unintroduced-clients] 
+                                     #{clientId} set/union)))
+                  (zipWriteState [:opentokSessions 
+                                  threadId 
+                                  :clients] {clientId client})
+                  (introduceIfNecessary session threadId))))
+         (.on session "connectionDestroyed"
+              (fn [event]
+                (let [clientId (.. event -connection -connectionId)
+                      newClients (dissoc
+                                   (zipReadState [:opentokSessions threadId
+                                                  :clients]) clientId)]
+                  (println (str "Connection Destroyed: " clientId))
+                  (zipOverwriteState [:opentokSessions threadId :clients]
+                                     newClients)
+                  (zipWriteState [:opentokSessions threadId]
+                                 {:unintroduced-clients #{clientId}
+                                  :should-be-introduced-clients #{clientId}}
+                                 set/difference)
+                  (introduceIfNecessary session threadId))
+                (ensureSomeoneIsIntroduced session threadId)))
+         (.on session "signal:am-not-introduced" 
+              (fn [event] 
+                (let [clientId (.. event -from -id)]
+                  (println (str "Received not introduced: " clientId))
+                  (zipWriteState [:opentokSessions threadId 
+                                  :unintroduced-clients]
+                                 #{clientId} set/union)
+                  (introduceIfNecessary session threadId))
+                (ensureSomeoneIsIntroduced session threadId)))
+         (.on session "signal:am-introduced" 
+              (fn [event] 
+                (let [clientId (.. event -from -id)]
+                  (println (str "Received am introduced: " clientId))
+                  (zipWriteState [:opentokSessions threadId]
+                                 {:unintroduced-clients #{clientId}
+                                  :should-be-introduced-clients #{clientId}}
+                                 set/difference))))
+         (.on session "signal:introduction" 
+              (fn [event]
+                (zipWriteState [:reddit :activeThreads threadId]
+                               (allKeysToKeywords (js->clj (.-data event))))))
+         (.on session "signal:introduction-complete" 
+              (fn [event]
+                (println (str "I am fully introduced"))
+                (zipWriteState [:opentokSessions threadId 
+                                :unintroduced-clients]
+                               #{(zipReadState [:opentokSessions threadId
+                                                :myId])} set/difference)
+                (.signal session (clj->js {:type "am-introduced"}))
+                (.on session "signal:comment-update"
+                     (fn [event]
+                       (zipWriteState [:reddit :activeThreads threadId]
+                                      (.-data event))))))
          (.connect session opentokKey token)
          )))
 
@@ -297,12 +447,12 @@
              jqueryArray
              (nth 3)
              first
-             (#(map (fn [isoCommentData]
-                      (-> isoCommentData
-                          (get "data"))) %))
              (#(reduce 
-                 (fn [[moreComments paths] commentData]
-                   (let [parentId 
+                 (fn [[moreComments paths] listEntry]
+                   (let [kind (get listEntry "kind")
+                         commentData (get listEntry "data")
+                         childs (string/join "," (get commentData "children"))
+                         parentId 
                          (-> commentData
                              (get "parent_id")
                              ((fn [pid] (drop 3 pid)))
@@ -318,17 +468,35 @@
                          t
                          (-> commentData
                              (get "created"))]
-                     [(deep-merge 
-                        moreComments
-                        (reduce (fn [commentTree pathEl]
-                                  {pathEl commentTree}) {commentId 
-                                                         {:id commentId 
-                                                          :content body
-                                                          :comments {}
-                                                          :time t}} (reverse (parentId paths)))) 
-                      (assoc paths commentId 
-                        (concat (parentId paths) 
-                                [commentId :comments]))])) 
+                     (if (= kind "more")
+                       (do 
+                         (zipWriteState 
+                           [:reddit :requestQueue]
+                           [{:time (.now js/Date)
+                            :threadId (first threadIds)
+                            :requestFun (fn []
+                                          (GET 
+                                            (str "https://api.reddit.com/api/"
+                                                 "morechildren?link_id=t3_"
+                                                 (name (first threadIds))
+                                                 "&children="
+                                                 childs
+                                                 "&sort=new")
+                                               {:handler (partial moreCommentsJSONHandler 
+                                                                  (parentId paths))}))
+                            :type :more}])
+                         [moreComments paths])
+                       [(deep-merge 
+                          moreComments
+                          (reduce (fn [commentTree pathEl]
+                                    {pathEl commentTree}) {commentId 
+                                                           {:id commentId 
+                                                            :content body
+                                                            :comments {}
+                                                            :time t}} (reverse (parentId paths))))  
+                        (assoc paths commentId 
+                          (concat (parentId paths) 
+                                  [commentId :comments]))]))) 
                  [{} {(first (rest (reverse threadIds))) threadIds}] %))
              first)))
     (reduce deep-merge {})
@@ -384,8 +552,13 @@
       (processCommentTree [threadId :comments])
       ((fn [comments] {:comments comments}))
       (zipWriteState [:reddit :activeThreads threadId])))
-  (.signal (zipReadState [:opentokSessions threadId :session]) 
-           (clj->js {:data (zipReadState [:reddit :activeThreads threadId])})))
+  ;;(println "we here tho")
+  ;;(doall (map #(.signal (zipReadState [:opentokSessions threadId :session])
+  ;;               (clj->js {:data %})) (range 10)))
+  )
+  ;;(.signal (zipReadState [:opentokSessions threadId :session]) 
+  ;;         (clj->js {:data (zipReadState [:reddit :activeThreads threadId])})
+  ;;         (fn [err] (if err (println (.-message err)) (println "SHOULD WORK WHAT DAFUQ")))))
 
 (defn pollReddit []
   (println "Still doin this shit")
