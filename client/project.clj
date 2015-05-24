@@ -30,6 +30,7 @@
                          :output-dir "stream-of-redditness-ionic/www/js/compiled/out"
                          :source-map-timestamp true }}
              {:id "min"
+              :figwheel false
               :source-paths ["src"]
               :compiler {:output-to "stream-of-redditness-ionic/www/js/compiled/stream_of_redditness_cljs.js"
                          :main stream-of-redditness-cljs.core                         
