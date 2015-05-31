@@ -14,8 +14,13 @@ goog.require('om.core');
 goog.require('stream_of_redditness_cljs.views');
 cljs.core.enable_console_print_BANG_.call(null);
 cljs.core.println.call(null,"Edits to this text should show up in your developer console.");
+stream_of_redditness_cljs.core.printReturn = (function stream_of_redditness_cljs$core$printReturn(a){
+cljs.core.println.call(null,a);
+
+return a;
+});
 stream_of_redditness_cljs.core.on_js_reload = (function stream_of_redditness_cljs$core$on_js_reload(){
 return null;
 });
 
-//# sourceMappingURL=core.js.map?rel=1433049860305
+//# sourceMappingURL=core.js.map?rel=1433055106122
