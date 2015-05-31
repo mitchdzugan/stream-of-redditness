@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no, width=device-width">
+    <title></title>
+    <link href="lib/ionic/css/ionic.css" rel="stylesheet">
+    <script src="lib/socket.io-client/socket.io.js"></script>
+    <script type='text/javascript'>
+        var id = "INSERTIDHERE";
+        var socket = io('http://localhost:3000');
+        socket.emit("authPageWait", id);
+        socket.on("message", function (msg) {
+            document.getElementById("AuthMessage").innerHTML = msg;
+        });
+    </script>
+  </head>
+  <body ng-app="starter">
+    <ion-nav-view class="view-container" nav-view-transition="ios" 
+                                         nav-view-direction="none" 
+                                         nav-swipe="">
+        <div class="pane" nav-view="active"
+                          style="opacity: 1; -webkit-transform: translate3d(0%, 0px, 0px);">
+            <ion-header-bar align-title="center" 
+                            class="bar-dark bar bar-header disable-user-behavior">
+                <div class="h1 title">Stream of Redditness</div>
+            </ion-header-bar>
+            <!-- uiView:  -->
+            <div ui-view="" class="">
+                <ion-content class="padding scroll-content ionic-scroll  has-header">
+                    <div class="scroll" 
+                         style="-webkit-transform: translate3d(0px, 0px, 0px) scale(1);">
+                        <div id="MyCont" style="text-align:center">
+                            <h4 id="AuthMessage" style="color:#444">
+                                Waiting For Authentication Response From Reddit
+                            </h4>
+                        </div>
+                    </div>
+                </ion-content>
+            </div>
+        </div>
+    </ion-nav-view>
+  </body>
+</html>

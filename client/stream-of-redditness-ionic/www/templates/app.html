@@ -1,6 +1,9 @@
-<ion-header-bar align-title="center" class="bar-positive">
-  <h1 class="title">Stream of Redditness</h1>
-  <div class="buttons" id="AuthButton">
-  </div>
+<ion-header-bar align-title="center" class="bar-dark">
+	<div class="buttons">
+		<button class="button button-light ion-ios-gear"> Manage Threads</button>
+		<button ng-click="scrollToTop()" class="button button-light icon-left ion-arrow-up-c"> To Top</button>
+	</div>
+	<div class="h1 title">Stream of Redditness</div>
+	<div class="buttons" id="AuthButton"></div>
 </ion-header-bar>
 <div ui-view></div>

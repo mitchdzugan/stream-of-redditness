@@ -1,1 +1,77 @@
 /* Empty. Add your own CSS if you like */
+
+.scroll {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+.voting {
+	max-width:18px;
+	padding:0px;
+}
+
+.commentbox hr {
+    border: 0;
+    height: 1px;
+    background-image: linear-gradient(to right, rgba(102, 102, 102, 0.75), rgba(102, 102, 102, 0));
+}
+
+.commentbox em {
+	font-style: italic;
+}
+
+.commentbox pre {
+	margin: 0px 0px 20px;
+	padding: 10px 20px;
+	border-left: 5px solid #808080;
+    font-size:14px;
+    color: #666;
+}
+
+.commentbox ul {
+    font-size:14px;
+    color: #666;
+    list-style-type: disc;
+	margin: 0px 20px 10px;
+}
+
+.commentbox ol {
+    font-size:14px;
+    color: #666;
+    list-style-type: decimal;
+	margin: 0px 20px 10px;
+}
+
+.commentbox table {
+	margin: 15px;
+}
+
+.commentbox tr {
+	border-top-width: 1px;
+	border-style: solid;
+    border-color: #666;
+    color: #666;
+    font-size:14px;
+}
+
+#updownvotecontainer {
+	max-width:16px;
+	padding:0px;
+}
+
+#StreamContainer .list .item {
+	padding: 8px;
+	padding-right: 2px;
+	padding-bottom: 2px;
+}
+
+.myspan {
+	margin-top: 6px;
+	margin-right: 6px;
+}
+
+#threadsReplyBox .col {
+	min-width: 1px;
+}

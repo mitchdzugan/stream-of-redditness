@@ -5,6 +5,32 @@
 // the 2nd parameter is an array of 'requires'
 // 'starter.services' is found in services.js
 // 'starter.controllers' is found in controllers.js
+
+function hexToRgb(hex) {
+  if (hex.length == 3 || (hex.length == 4 && hex[0] == "#")) {
+    hex = hex.concat(hex.slice(-3));
+  }
+   var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+   return result ? {
+       r: parseInt(result[1], 16),
+       g: parseInt(result[2], 16),
+       b: parseInt(result[3], 16)
+   } : null;
+}
+
+function whiteOrBlack(hex) {
+  var rgb = hexToRgb(hex);
+
+  if (rgb == null) return "#ffffff";
+
+  if (0.18 < (0.2126 * Math.pow((rgb.r/255), 2.2) +  
+              0.7151 * Math.pow((rgb.g/255), 2.2) +  
+              0.0721 * Math.pow((rgb.b/255), 2.2))) {
+    return "#000000";
+  }
+  return "#ffffff";
+}
+
 angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
 
 .run(function($ionicPlatform) {
@@ -34,11 +60,16 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
     url: "/app",
     abstract: true,
     templateUrl: "templates/app.html",
-    controller: function($scope, $ionicPopup) {
-      stream_of_redditness_cljs.core.registerPopupShower(
+    controller: function($scope, $ionicPopup, $timeout, $ionicScrollDelegate) {
+      $scope.scrollToTop = function() {
+        $timeout(function(){
+          $ionicScrollDelegate.scrollTop(true);
+        },50)
+      }
+      stream_of_redditness_cljs.popup.registerPopupShower(
         function (popupDetails) {return $ionicPopup.show(popupDetails)}
         );
-      stream_of_redditness_cljs.core.authButtonView();
+      stream_of_redditness_cljs.views.authButtonView();
     }
   })
 
@@ -50,10 +81,18 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
   })
 
   .state('app.stream', {
-    url: '/stream?threads',
+    url: '/stream?threads&colors',
     templateUrl: 'templates/stream.html',
     controller: function($scope, $state) {
-      stream_of_redditness_cljs.core.streamView($state.params.threads);
+      stream_of_redditness_cljs.ctrls.stream_ctrls($state.params.threads, $state.params.colors);
+    }
+  })
+
+  .state('app.manage', {
+    url: '/manage?threads&colors',
+    templateUrl: 'templates/manage.html',
+    controller: function($scope, $state) {
+      stream_of_redditness_cljs.core.manageView($state.params.threads, $state.params.colors);
     }
   })
 

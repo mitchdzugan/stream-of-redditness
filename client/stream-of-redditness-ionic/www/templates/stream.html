@@ -1,3 +1,37 @@
+<!--<ion-content class="padding" overflow-scroll=true>
+	<script type="text/ng-template" id="comment-tree-renderer.html">
+		<div>
+			<p style="margin:0px;">{{comment.author}} &middot [{{comment.score}}] </p>
+			<div class="row" style="padding:0px;">
+				<div class="col col-center" style="max-width:18px;padding:0px;">
+					<i class="icon ion-arrow-up-b"></i><br/>
+					<i class="icon ion-arrow-down-b"></i>
+				</div>
+				<div class="col col-center">
+					<div ng-bind-html="comment.content"></div>
+				</div>
+		    </div>
+		    <div>
+				<button>AYY LMAO</button>
+			</div>
+			<ion-list>
+		        <ion-item ng-repeat="comment in comment.comments" 
+		                  ng-include="'comment-tree-renderer.html'"
+		                  style="margin-top:10px;">/ion-item>
+			</ion-list>
+		</div>
+	</script>
+
+
+	<div id="StreamContainer">
+		<div ng-repeat="comment in cs">
+			<div style="background-color:{{comment.color}};padding-left:15px;margin-bottom:15px;">
+				<ion-item class="item-text-wrap" ng-include="'comment-tree-renderer.html'">
+				</ion-item>
+			</div>
+		</div>
+	</div>
+</ion-content>-->
 <ion-content class="padding" overflow-scroll=true>
 	<div id="StreamContainer"><h2>STREAMING</h2></div>
 </ion-content>
